@@ -364,7 +364,7 @@ class Zappa(object):
                     deps += self.get_deps_list(pkg_name=req.project_name, installed_distros=installed_distros)
         return list(set(deps))  # de-dupe before returning
 
-    def create_handler_venv(self):
+    def create_handler_venv(self, force_include=[]):
         """
         Takes the installed zappa and brings it into a fresh virtualenv-like folder. All dependencies are then downloaded.
         """
@@ -390,7 +390,13 @@ class Zappa(object):
         zappa_things = [z for z in os.listdir(current_site_packages_dir) if z.lower()[:5] == 'zappa']
         for z in zappa_things:
             copytree(os.path.join(current_site_packages_dir, z), os.path.join(venv_site_packages_dir, z))
-
+			
+        # Copy force_include packages to the new virtualenv
+        for pincl in force_include:
+            package_things = [p for p in os.listdir(current_site_packages_dir) if p.lower()[:len(pincl)] == pincl]
+            for t in package_things:
+                copytree(os.path.join(current_site_packages_dir, t), os.path.join(venv_site_packages_dir, t))
+				
         # Use pip to download zappa's dependencies. Copying from current venv causes issues with things like PyYAML that installs as yaml
         zappa_deps = self.get_deps_list('zappa')
         pkg_list = ['{0!s}=={1!s}'.format(dep, version) for dep, version in zappa_deps]
@@ -432,6 +438,8 @@ class Zappa(object):
                             minify=True,
                             exclude=None,
                             use_precompiled_packages=True,
+                            force_include=[],
+                            force_exclude=[],
                             include=None,
                             venv=None,
                             output=None,
@@ -464,6 +472,7 @@ class Zappa(object):
                 archive_fname = prefix + '-' + build_time + '.tar.gz'
         else:
             archive_fname = output
+		
         archive_path = os.path.join(cwd, archive_fname)
 
         # Files that should be excluded from the zip
@@ -596,38 +605,41 @@ class Zappa(object):
         copy_tree(temp_package_path, temp_project_path, update=True)
 
         # Then the pre-compiled packages..
-        if use_precompiled_packages:
+        if use_precompiled_packages or (len(force_include)>0):
             print("Downloading and installing dependencies..")
             installed_packages = self.get_installed_packages(site_packages, site_packages_64)
 
             try:
                 for installed_package_name, installed_package_version in installed_packages.items():
-                    if self.have_correct_lambda_package_version(installed_package_name, installed_package_version):
-                        print(" - %s==%s: Using precompiled lambda package " % (installed_package_name, installed_package_version,))
-                        self.extract_lambda_package(installed_package_name, temp_project_path)
-                    else:
-                        cached_wheel_path = self.get_cached_manylinux_wheel(installed_package_name, installed_package_version, disable_progress)
-                        if cached_wheel_path:
-                            # Otherwise try to use manylinux packages from PyPi..
-                            # Related: https://github.com/Miserlou/Zappa/issues/398
-                            shutil.rmtree(os.path.join(temp_project_path, installed_package_name), ignore_errors=True)
-                            with zipfile.ZipFile(cached_wheel_path) as zfile:
-                                zfile.extractall(temp_project_path)
-
-                        elif self.have_any_lambda_package_version(installed_package_name):
-                            # Finally see if we may have at least one version of the package in lambda packages
-                            # Related: https://github.com/Miserlou/Zappa/issues/855
-                            lambda_version = lambda_packages[installed_package_name][self.runtime]['version']
-                            print(" - %s==%s: Warning! Using precompiled lambda package version %s instead!" % (installed_package_name, installed_package_version, lambda_version, ))
+                    if ((not installed_package_name in force_exclude) &  use_precompiled_packages) or\
+                        (installed_package_name in force_include):
+						
+                        if self.have_correct_lambda_package_version(installed_package_name, installed_package_version):
+                            print(" - %s==%s: Using precompiled lambda package " % (installed_package_name, installed_package_version,))
                             self.extract_lambda_package(installed_package_name, temp_project_path)
-
-                # This is a special case!
-                # SQLite3 is part of the _system_ Python, not a package. Still, it lives in `lambda-packages`.
-                # Everybody on Python3 gets it!
-                if self.runtime == "python3.6":
-                    print(" - sqlite==python36: Using precompiled lambda package")
-                    self.extract_lambda_package('sqlite3', temp_project_path)
-
+                        else:
+                            cached_wheel_path = self.get_cached_manylinux_wheel(installed_package_name, installed_package_version, disable_progress)
+                            if cached_wheel_path:
+                								# Otherwise try to use manylinux packages from PyPi..
+                								# Related: https://github.com/Miserlou/Zappa/issues/398
+                                shutil.rmtree(os.path.join(temp_project_path, installed_package_name), ignore_errors=True)
+                                with zipfile.ZipFile(cached_wheel_path) as zfile:
+                                    zfile.extractall(temp_project_path)
+            
+                            elif self.have_any_lambda_package_version(installed_package_name):
+                                # Finally see if we may have at least one version of the package in lambda packages
+                                # Related: https://github.com/Miserlou/Zappa/issues/855
+                                lambda_version = lambda_packages[installed_package_name][self.runtime]['version']
+                                print(" - %s==%s: Warning! Using precompiled lambda package version %s instead!" % (installed_package_name, installed_package_version, lambda_version, ))
+                                self.extract_lambda_package(installed_package_name, temp_project_path)
+                                
+                                # This is a special case!
+                                # SQLite3 is part of the _system_ Python, not a package. Still, it lives in `lambda-packages`.
+                                # Everybody on Python3 gets it!
+                                if self.runtime == "python3.6":
+                                    print(" - sqlite==python36: Using precompiled lambda package")
+                                    self.extract_lambda_package('sqlite3', temp_project_path)
+                
             except Exception as e:
                 print(e)
                 # XXX - What should we do here?

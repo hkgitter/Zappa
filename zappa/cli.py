@@ -2141,10 +2141,18 @@ class ZappaCLI(object):
         if self.stage_config.get('slim_handler', False):
             # Create two zips. One with the application and the other with just the handler.
             # https://github.com/Miserlou/Zappa/issues/510
+			
+            exclude = self.stage_config.get('exclude', [])
+			
+            if len(self.stage_config.get('force_include_in_handler', [])) > 0:
+                for package in self.stage_config.get('force_include_in_handler', []):
+                    exclude.append(''.join([package]))
+
             self.zip_path = self.zappa.create_lambda_zip(
                 prefix=self.lambda_name,
                 use_precompiled_packages=self.stage_config.get('use_precompiled_packages', True),
-                exclude=self.stage_config.get('exclude', []),
+                exclude=exclude,
+                force_exclude=self.stage_config.get('force_include_in_handler', []),
                 disable_progress=self.disable_progress,
                 archive_format='tarball'
             )
@@ -2153,12 +2161,20 @@ class ZappaCLI(object):
             exclude = self.stage_config.get('exclude', [])
             cur_venv = self.zappa.get_current_venv()
             exclude.append(cur_venv.split('/')[-1])
+			
+            for incl in self.stage_config.get('force_include_in_handler', []):
+                if incl in exclude:
+                    exclude.pop(exclude.index(incl))					
+					
             self.handler_path = self.zappa.create_lambda_zip(
                 prefix='handler_{0!s}'.format(self.lambda_name),
-                venv=self.zappa.create_handler_venv(),
+                venv=self.zappa.create_handler_venv(
+                                force_include=self.stage_config.get('force_include_in_handler', [])
+                                ),
                 handler_file=handler_file,
                 slim_handler=True,
                 exclude=exclude,
+				force_include=self.stage_config.get('force_include_in_handler', []),
                 output=output,
                 disable_progress=self.disable_progress
             )
