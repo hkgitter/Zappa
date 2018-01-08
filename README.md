@@ -792,6 +792,7 @@ to change Zappa's behavior. Use these at your own risk!
         ],
         "exception_handler": "your_module.report_exception", // function that will be invoked in case Zappa sees an unhandled exception raised from your code
         "exclude": ["*.gz", "*.rar"], // A list of regex patterns to exclude from the archive. To exclude boto3 and botocore (available in an older version on Lambda), add "boto3*" and "botocore*".
+		"force_include_in_handler": [], // A list of package names to include in handler zip. When slim_handler is enabled, the packages in this list will be included in the handler zip instead of the S3 bucket zip. This will save space in /tmp directory if the site-packages size is larger or close to the limit. Example: ["scipy", "numpy"]
         "extends": "stage_name", // Duplicate and extend another stage's settings. For example, `dev-asia` could extend from `dev-common` with a different `s3_bucket` value.
         "extra_permissions": [{ // Attach any extra permissions to this policy. Default None
             "Effect": "Allow",
