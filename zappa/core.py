@@ -473,8 +473,10 @@ class Zappa(object):
         else:
             archive_fname = output
 		
-        archive_path = os.path.join(cwd, archive_fname)
-
+    		# use relative file path instead of absolute path.
+    		# https://github.com/Miserlou/Zappa/issues/1327	
+        archive_path = archive_fname# os.path.join(cwd, archive_fname)
+        
         # Files that should be excluded from the zip
         if exclude is None:
             exclude = list()
